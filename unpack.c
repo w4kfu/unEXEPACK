@@ -38,6 +38,13 @@ struct exepack_header
 };
 
 void hex_dump(void *data, int size);
+void reverse(char *s, size_t length);
+void unpack_data(unsigned char *unpacked_data, unsigned char *buf, size_t unpacked_data_size, size_t packed_data_len);
+char *create_reloc_table(char *buf_load, struct dos_header *dh, struct exepack_header *eh, int *reloc_table_size);
+void writeexe(struct dos_header *dhead, struct exepack_header *eh, char *unpacked_data, char *reloc, size_t reloc_size, size_t padding);
+void craftexec(char *buf_load, struct dos_header *dh, struct exepack_header *eh, char *unpacked_data);
+void unpack(char *buf_load, struct dos_header *dh);
+int test_dos_header(struct dos_header *dh);
 
 void print_dos_header(struct dos_header *dh)
 {
@@ -57,7 +64,7 @@ void print_dos_header(struct dos_header *dh)
 	printf("e_ovno     = %04X\n", dh->e_ovno);
 }
 
-void reverse(char s[], size_t length)
+void reverse(char *s, size_t length)
 {
 	int c, i, j;
 
@@ -69,6 +76,7 @@ void reverse(char s[], size_t length)
 	}
 }
 
+/* buf is already reversed, because EXEPACK use backward processing */
 void unpack_data(unsigned char *unpacked_data, unsigned char *buf, size_t unpacked_data_size, size_t packed_data_len)
 {
 	unsigned char opcode;
@@ -100,7 +108,7 @@ void unpack_data(unsigned char *unpacked_data, unsigned char *buf, size_t unpack
 		}
 		else
 		{
-			fprintf(stderr, "WTF ?!\n");
+			fprintf(stderr, "Opcode unknow!\n");
 			exit(0);
 		}
 		if ((opcode & 1) == 1)
@@ -110,11 +118,9 @@ void unpack_data(unsigned char *unpacked_data, unsigned char *buf, size_t unpack
 	{
 		if ((packed_data_len - (buf - save_buf)) > (unpacked_data_size - (unpacked_data - save_unp)))
 		{
-			fprintf(stderr, "HEU LOL WAT?!\n");
+			fprintf(stderr, "Data left are too large!\n");
 			exit(0);
 		}
-		printf("Left = %X\n", packed_data_len - (buf - save_buf));
-		printf("Already copied = %X\n", unpacked_data - save_unp);
 		memcpy(unpacked_data, buf, packed_data_len - (buf - save_buf));
 	}
 }
@@ -124,16 +130,14 @@ char *create_reloc_table(char *buf_load, struct dos_header *dh, struct exepack_h
 	int reloc_length;
 	int nb_reloc;
 	char *buf_reloc = NULL;
-	char *sbuf_reloc = NULL;
 	char *reloc = NULL;
 	int i, j;
-	int nb_entry;
-	int num_entry;
+	int count;
+	int entry;
 
 	reloc_length = eh->exepack_size - strlen("Packed file is corrupt") - sizeof (struct exepack_header) - 0x105; /* Unpacker Length */
 	nb_reloc = (reloc_length - 16 * sizeof (unsigned short)) / 2;
 	*reloc_table_size = nb_reloc * 2 * sizeof(unsigned short);
-	printf("reloc_table_size = %d\n", *reloc_table_size);
 	if (!(buf_reloc = malloc(sizeof (char) * *reloc_table_size)))
 	{
 		perror("malloc()");
@@ -142,35 +146,28 @@ char *create_reloc_table(char *buf_load, struct dos_header *dh, struct exepack_h
 	reloc = buf_load + ((dh->e_cparhdr + dh->e_cs) * 16 - (eh->skip_len - 1) * 16) + sizeof (struct exepack_header) + 0x105;
 	if (strncmp(reloc, "Packed file is corrupt", strlen("Packed file is corrupt")))
 	{
-		fprintf(stderr, "hmm wat?\n");
+		fprintf(stderr, "Cannot find string \"Packed file is corrupt\", is it really EXEPACK ?\n");
 		exit(0);
 	}
 	reloc += strlen("Packed file is corrupt");
-	printf("OFFSET RELOC = %X\n", reloc - buf_load);
 	*reloc_table_size = 0;
-	sbuf_reloc = buf_reloc;
 	for (i = 0; i < 16; i++)
 	{
-		nb_entry = *(unsigned short*)reloc;
+		count = *(unsigned short*)reloc;
 		reloc += 2;
-		if (nb_entry == 0)
+		if (count == 0)
 			break;
-		for (j = 0; j < nb_entry; j++)
+		for (j = 0; j < count; j++)
 		{
-			num_entry = *(unsigned short*)reloc;
+			entry = *(unsigned short*)reloc;
 			reloc += 2;
-			*(unsigned short*)(buf_reloc) = num_entry;
-			buf_reloc += 2;
+			*(unsigned short*)(buf_reloc + *reloc_table_size) = entry;
 			*reloc_table_size += 2;
-			*(unsigned short*)(buf_reloc) = i * 0x1000;
-			buf_reloc +=2 ;
+			*(unsigned short*)(buf_reloc + *reloc_table_size) = i * 0x1000;
 			*reloc_table_size += 2;
 		}
 	}
-	printf("End reloc_table_size = %d\n", *reloc_table_size);
-	printf("NB ENTRY = %d\n", *reloc_table_size / (2 * sizeof (unsigned short)));
-	hex_dump(sbuf_reloc, *reloc_table_size);
-	return sbuf_reloc;
+	return buf_reloc;
 }
 
 void writeexe(struct dos_header *dhead, struct exepack_header *eh, char *unpacked_data, char *reloc, size_t reloc_size, size_t padding)
@@ -178,7 +175,7 @@ void writeexe(struct dos_header *dhead, struct exepack_header *eh, char *unpacke
 	int fd;
 	int i;
 
-	fd = open("out", O_WRONLY | O_CREAT);
+	fd = open("unpacked", O_WRONLY | O_CREAT, 0644);
 	if (fd == -1)
 	{
 		perror("open()");
@@ -201,35 +198,27 @@ void craftexec(char *buf_load, struct dos_header *dh, struct exepack_header *eh,
 	int reloc_size;
 	char *reloc = NULL;
 
-
-	reloc = create_reloc_table(buf_load, dh, eh, &reloc_size);
-
-	header_size = sizeof (struct dos_header) + reloc_size;
-
 	memset(&dhead, 0, sizeof (struct dos_header));
+	reloc = create_reloc_table(buf_load, dh, eh, &reloc_size);
+	header_size = sizeof (struct dos_header) + reloc_size;
 	dhead.e_magic = 0x5A4D;
 	dhead.e_cparhdr = header_size / 16;
 	dhead.e_cparhdr = (dhead.e_cparhdr / 32 + 1) * 32;
-
 	padding_length = dhead.e_cparhdr * 16 - header_size;
 	total_length = header_size + padding_length + eh->dest_len * 16;
-
-	printf("TOTAL_LENGTH = %d\n", total_length);
 	dhead.e_ss = eh->real_ss;
 	dhead.e_sp = eh->real_sp;
 	dhead.e_ip = eh->real_ip;
 	dhead.e_cs = eh->real_cs;
-
-	dhead.e_minalloc = total_length / 60;
+	dhead.e_minalloc = dh->e_minalloc;
 	dhead.e_maxalloc = 0xFFFF;
-
 	dhead.e_lfarlc = sizeof (struct dos_header);
 	dhead.e_crlc = reloc_size / (2 * sizeof (unsigned short));
-
 	dhead.e_cblp = total_length % 512;
 	dhead.e_cp = total_length / 512 + 1;
 	print_dos_header(&dhead);
 	writeexe(&dhead, eh, unpacked_data, reloc, reloc_size, padding_length);
+	free(reloc);
 }
 
 void unpack(char *buf_load, struct dos_header *dh)
@@ -265,38 +254,41 @@ void unpack(char *buf_load, struct dos_header *dh)
 	printf("UnpackedDataLen = %X\n", eh->dest_len * 16);
 	printf("OFFSET = %X\n", (buf_load + packed_data_end - 1) - buf_load);
 	reverse(buf_load + packed_data_start, packed_data_len);
-	//hex_dump(buf_load + packed_data_start, 0x100);
 	unpack_data(unpacked_data, buf_load + packed_data_start, eh->dest_len * 16, packed_data_len);
+	/* EXEPACK use backward processing */
 	reverse(unpacked_data, eh->dest_len * 16);
 	printf("UNPACKED\n");
-	//hex_dump(unpacked_data, eh->dest_len * 16);
 	craftexec(buf_load, dh, eh, unpacked_data);
 	free(unpacked_data);
 }
 
 int test_dos_header(struct dos_header *dh)
 {
+	/* at least one page */
 	if (dh->e_cp == 0)
 		return 0;
+	/* last page must not hold 0 bytes */
 	if (dh->e_cblp == 0)
 		return 0;
+	/* not even number of paragraphs */
 	if (dh->e_cparhdr % 2 != 0)
-		return 0;
-	if (dh->e_ovno != 0)
-		return 0;
-	if (dh->e_crlc != 0)
 		return 0;
 	return 1;
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
 	int fd;
 	struct stat st;
 	char *buf_load = NULL;
 	struct dos_header *dh = NULL;
 
-	fd = open("LOAD.EXE", O_RDONLY);
+	if (argc != 2)
+	{
+		fprintf(stderr, "%s <EXEPACK_file>; ouput file is \"unpacked\"\n", argv[0]);
+		exit(EXIT_FAILURE);
+	}
+	fd = open(argv[1], O_RDONLY);
 	if (fd == -1)
 	{
 		perror("open()");
