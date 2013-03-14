@@ -187,8 +187,8 @@ void writeexe(struct dos_header *dhead, struct exepack_header *eh, char *unpacke
 	write(fd, dhead, sizeof (struct dos_header));
 	write(fd, reloc, reloc_size);
 	for (i = 0; i < padding; i++)
-		write(fd, "\x00", 1);	
-	write(fd, unpacked_data, eh->dest_len * 16); 
+		write(fd, "\x00", 1);
+	write(fd, unpacked_data, eh->dest_len * 16);
 	close(fd);
 }
 
@@ -226,7 +226,7 @@ void craftexec(char *buf_load, struct dos_header *dh, struct exepack_header *eh,
 	dhead.e_lfarlc = sizeof (struct dos_header);
 	dhead.e_crlc = reloc_size / (2 * sizeof (unsigned short));
 
-	dhead.e_cblp /* bytes_in_last */ = total_length % 512; 
+	dhead.e_cblp = total_length % 512;
 	dhead.e_cp = total_length / 512 + 1;
 	print_dos_header(&dhead);
 	writeexe(&dhead, eh, unpacked_data, reloc, reloc_size, padding_length);
@@ -346,7 +346,7 @@ void hex_dump(void *data, int size)
         if (n % 16 == 1)
         {
                 snprintf(addrstr, sizeof(addrstr), "%.4x",
-                    ((unsigned int)p-(unsigned int)data));
+                    (p - (unsigned char*)data));
         }
         c = *p;
         if (isalnum(c) == 0)
