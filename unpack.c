@@ -155,8 +155,6 @@ char *create_reloc_table(char *buf_load, struct dos_header *dh, struct exepack_h
 	{
 		count = *(unsigned short*)reloc;
 		reloc += 2;
-		if (count == 0)
-			break;
 		for (j = 0; j < count; j++)
 		{
 			entry = *(unsigned short*)reloc;
