@@ -6,6 +6,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifndef O_BINARY
+#define O_BINARY 0
+#endif
+
 struct dos_header
 {
 	unsigned short e_magic;
@@ -173,7 +177,7 @@ void writeexe(struct dos_header *dhead, struct exepack_header *eh, char *unpacke
 	int fd;
 	int i;
 
-	fd = open("unpacked", O_WRONLY | O_CREAT, 0644);
+	fd = open("unpacked", O_WRONLY | O_CREAT | O_BINARY, 0644);
 	if (fd == -1)
 	{
 		perror("open()");
@@ -286,7 +290,7 @@ int main(int argc, char **argv)
 		fprintf(stderr, "%s <EXEPACK_file>; ouput file is \"unpacked\"\n", argv[0]);
 		exit(EXIT_FAILURE);
 	}
-	fd = open(argv[1], O_RDONLY);
+	fd = open(argv[1], O_RDONLY | O_BINARY);
 	if (fd == -1)
 	{
 		perror("open()");
