@@ -177,8 +177,11 @@ void unpack_data(unsigned char *unpacked_data, unsigned char *buf, unsigned int 
         if ((opcode & 1) == 1) {
             break;
         }
+        if (buf - save_buf >= packed_data_len) {
+            break;
+        }
     }
-    if (buf - save_buf != packed_data_len) {
+    if (buf - save_buf < packed_data_len) {
         if ((packed_data_len - (buf - save_buf)) > (unpacked_data_size - (unpacked_data - save_unp))) {
             XERROR("Data left are too large!");
         }
@@ -194,8 +197,9 @@ unsigned char *create_reloc_table(struct memstream *ms, struct dos_header *dh, s
     unsigned char *buf_reloc = NULL;
     unsigned char *reloc = NULL;
     int i, j;
-    int count;
+    unsigned short count = 0x00;
     unsigned short entry;
+    unsigned int reloc_position = 0x00;
 
     exepack_offset = (dh->e_cparhdr + dh->e_cs) * 16;
     msseek(ms, exepack_offset);
@@ -212,9 +216,7 @@ unsigned char *create_reloc_table(struct memstream *ms, struct dos_header *dh, s
         XPERROR("malloc");
     }
     reloc += strlen("Packed file is corrupt");
-    *reloc_table_size = 0;
     msseek(ms, (reloc - ms->buf) & 0xFFFFFFFF);
-
     for (i = 0; i < 16; i++) {
         if (msread(ms, &count, sizeof (unsigned short)) != sizeof (unsigned short)) {
             XERROR("msread failed");
@@ -223,12 +225,19 @@ unsigned char *create_reloc_table(struct memstream *ms, struct dos_header *dh, s
             if (msread(ms, &entry, sizeof (unsigned short)) != sizeof (unsigned short)) {
                 XERROR("msread failed");
             }
-            *(unsigned short*)(buf_reloc + *reloc_table_size) = entry;
-            *reloc_table_size += 2;
-            *(unsigned short*)(buf_reloc + *reloc_table_size) = (i * 0x1000) & 0xFFFF;
-            *reloc_table_size += 2;
+            if (reloc_position >= *reloc_table_size) {
+                XERROR("overflow");
+            }
+            *(unsigned short*)(buf_reloc + reloc_position) = entry;
+            reloc_position += 2;
+            if (reloc_position >= *reloc_table_size) {
+                XERROR("overflow");
+            }
+            *(unsigned short*)(buf_reloc + reloc_position) = (i * 0x1000) & 0xFFFF;
+            reloc_position += 2;
         }
     }
+    *reloc_table_size = reloc_position;
     return buf_reloc;
 }
 
