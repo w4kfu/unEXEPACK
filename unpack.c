@@ -127,6 +127,9 @@ void reverse(unsigned char *s, size_t length)
     size_t i, j;
     unsigned char c;
 
+    if (length == 0x00) {
+        return;
+    }
     for (i = 0, j = length - 1; i < j; i++, j--) {
         c = s[i];
         s[i] = s[j];
