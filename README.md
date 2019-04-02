@@ -79,7 +79,7 @@ This list is based on the awesome [Total DOS Collection Release 14](https://arch
 
 ## Known bugs
 
-Only works on english version of exepack.
+Only works on the English version of EXEPACK.
 
 Relocation table location is computed by looking at the pattern "Packed file is corrupt".
 
@@ -109,7 +109,7 @@ Offset(h) 00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F
 00003000  6F 72 72 6F 6D 70 69 64 6F 20 20 20 20 18 00 EA  orrompido    ..ê
 ```
 
-## Ressources
+## Resources
 
 * [File Format](http://www.shikadi.net/moddingwiki/Microsoft_EXEPACK#File_Format)
 * [unexepack from openKB](https://sourceforge.net/p/openkb/code/ci/master/tree/src/tools/unexepack.c)
